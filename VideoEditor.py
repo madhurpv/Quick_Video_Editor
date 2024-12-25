@@ -6,6 +6,9 @@ import numpy as np
 from PIL import Image, ImageTk
 
 
+#TODO: Add all Errors to Message Box
+
+
 copyright_image_default_path = "C:\\Users\\Dell\\Desktop\\New folder (18)\\CopyrightSymbol.png"
 preview_placeholder_image_default_path = "Video_Frame_Placeholder.png"
 
@@ -30,8 +33,17 @@ def overlay_image_alpha(background, overlay, position=(0, 0)):
     
     return background
 
-def process_frame(frame, new_width, new_height, copyright_checked, copyright_img):
-    # Resize the frame to the new width and height
+def process_frame(frame, new_width, new_height, copyright_checked, copyright_img, crop_x_start, crop_x_end, crop_y_start, crop_y_end):
+    # Cropping
+    height, width, channels = frame.shape
+    
+    frame = frame[crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+
+    #height, width, channels = frame.shape
+    #new_width = scale_new_width(height, width, new_height)
+    #print(new_width, new_height, frame.shape)
+    
+    # Resize frame
     frame_resized = cv2.resize(frame, (new_width, new_height))
     
     # Overlay the copyright image if checked
@@ -55,14 +67,41 @@ def process_video(input_video_path, output_video_path, x, y, output_height, copy
     original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
+
+    crop_x_start = int(crop_x_start_entry.get())
+    crop_x_end = int(crop_x_end_entry.get())
+    crop_y_start = int(crop_y_start_entry.get())
+    crop_y_end = int(crop_y_end_entry.get())
+
+    if crop_x_start >= crop_x_end:
+        messagebox.showerror("Error 1", "Horizontal End must be greater than Horizontal Start!")
+        return 1
+    if crop_y_start >= crop_y_end:
+        messagebox.showerror("Error 2", "Vertical End must be greater than Vertical Start!")
+        return 2
+
+    if crop_x_start < 0:
+        crop_x_start = 0
+    if crop_y_start < 0:
+        crop_y_start = 0
+    if crop_x_end >= original_width:
+        crop_x_end = original_width-1
+    if crop_y_end >= original_height:
+        crop_y_end = original_height-1
+
+    if (crop_y_end-crop_y_start)%2!=0:
+        crop_y_start+=1
+    if (crop_x_end-crop_x_start)%2!=0:
+        crop_x_start+=1
+        
     # Calculate the new width to maintain aspect ratio for the specified height
     new_height = output_height
-    new_width = scale_new_width(original_height, original_width, new_height)
+    new_width = scale_new_width(crop_y_end-crop_y_start, crop_x_end-crop_x_start, new_height)
     
     # Set up codec and output video writer
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for saving as .mp4
     out = cv2.VideoWriter(output_video_path, fourcc, fps, (new_width, new_height))
+    #print("ORIGINAL - ", new_width, new_height)
     
     
     # Calculate the frame numbers for the start (x) and end (y) times
@@ -81,7 +120,7 @@ def process_video(input_video_path, output_video_path, x, y, output_height, copy
         if not ret:
             break
 
-        frame_resized = process_frame(frame, new_width, new_height, copyright_checked, copyright_img)
+        frame_resized = process_frame(frame, new_width, new_height, copyright_checked, copyright_img, crop_x_start, crop_x_end, crop_y_start, crop_y_end)
 
         # Write the frame to the output file
         out.write(frame_resized)
@@ -107,6 +146,7 @@ def process_video(input_video_path, output_video_path, x, y, output_height, copy
     # Release the video objects
     cap.release()
     out.release()
+    return 0
 
 def select_input_file():
     file_path = filedialog.askopenfilename(filetypes=[("Video files", "*.mp4 *.avi *.mov")])
@@ -126,6 +166,9 @@ def select_copyright_image():
 def start_processing():
     # Get input from the user
     input_video = input_file_entry.get()
+    if input_video == "":
+        messagebox.showerror("Error 3", "Input Video not specified!!")
+        return 3
     output_video = output_file_entry.get()
     copyright_image_path = copyright_image_entry.get()
     try:
@@ -164,47 +207,92 @@ def start_processing():
 
         # Start video processing
         progress_bar['value'] = 0
-        process_video(input_video, output_video, start_time, end_time, output_height, copyright_checked, copyright_img, render_preview_checked, update_progress)
+        status = process_video(input_video, output_video, start_time, end_time, output_height, copyright_checked, copyright_img, render_preview_checked, update_progress)
         
         # Enable UI elements after processing
         start_button.config(state=tk.NORMAL)
         input_file_button.config(state=tk.NORMAL)
         output_file_button.config(state=tk.NORMAL)
         copyright_image_button.config(state=tk.NORMAL)
-        
-        messagebox.showinfo("Success", "Video processing completed successfully!")
+
+        if status==0:
+            messagebox.showinfo("Success", "Video processing completed successfully!")
 
     except ValueError as e:
         messagebox.showerror("Error", str(e))
 
 def get_preview():
     input_video = input_file_entry.get()
-    frame_number = int(previewframe_entry.get())
+    if input_video == "":
+        messagebox.showerror("Error 3", "Input Video not specified!!")
+        return
+    if previewframe_entry.get() == "":
+        messagebox.showerror("Error 4", "Enter Frame Number!")
+        return
+    try:
+        frame_number = int(previewframe_entry.get())
+    except:
+        messagebox.showerror("Error 5", "Enter correct Frame Number!")
+        return
+    if frame_number<0:
+        messagebox.showerror("Error 6", "Enter Frame Number > 0!")
+        return
     copyright_checked = copyright_var.get()
     copyright_image_path = copyright_image_entry.get()
     if not copyright_image_path:
         copyright_image_path = copyright_image_default_path
 
+    output_height = int(height_entry.get())
+
     copyright_img = cv2.imread(copyright_image_path, cv2.IMREAD_UNCHANGED)  # Read image with alpha channel
     #print(copyright_img.shape)
     copyright_img = cv2.resize(copyright_img, (400, 80))  # Resize to fixed size (400x80)
-    
+
     cap = cv2.VideoCapture(input_video)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number-1)
-    res, frame = cap.read()
 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     if frame_number >= total_frames:
         frame_number = total_frames-1
+    
+    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_number-1)
+    res, frame = cap.read()
 
     original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    crop_x_start = int(crop_x_start_entry.get())
+    crop_x_end = int(crop_x_end_entry.get())
+    crop_y_start = int(crop_y_start_entry.get())
+    crop_y_end = int(crop_y_end_entry.get())
+
+    if crop_x_start >= crop_x_end:
+        messagebox.showerror("Error 1", "Horizontal End must be greater than Horizontal Start!")
+        return
+    if crop_y_start >= crop_y_end:
+        messagebox.showerror("Error 2", "Vertical End must be greater than Vertical Start!")
+        return
+
+    if crop_x_start < 0:
+        crop_x_start = 0
+    if crop_y_start < 0:
+        crop_y_start = 0
+    if crop_x_end >= original_width:
+        crop_x_end = original_width-1
+    if crop_y_end >= original_height:
+        crop_y_end = original_height-1
+
+    if (crop_y_end-crop_y_start)%2!=0:
+        crop_y_start+=1
+    if (crop_x_end-crop_x_start)%2!=0:
+        crop_x_start+=1
+        
     # Calculate the new width to maintain aspect ratio for the specified height
-    new_height = int(height_entry.get())
+    new_height = output_height
+    new_width = scale_new_width(crop_y_end-crop_y_start, crop_x_end-crop_x_start, new_height)
     new_width = scale_new_width(original_height, original_width, new_height)
 
-    frame_resized = process_frame(frame, new_width, new_height, copyright_checked, copyright_img)
+    frame_resized = process_frame(frame, new_width, new_height, copyright_checked, copyright_img, crop_x_start, crop_x_end, crop_y_start, crop_y_end)
     frame_resized = cv2.resize(frame_resized, (500, 300))
     b,g,r = cv2.split(frame_resized)
     frame_resized = cv2.merge((r,g,b))
@@ -222,7 +310,10 @@ def update_progress(current, total):
 
 # Create the GUI window
 root = tk.Tk()
-root.title("Video Resizer, Trimmer, and Watermark")
+root.title("Video Editor")
+root.configure(background='#303030')
+root.option_add("*Background", "#303030")
+root.option_add("*Foreground", "#BBBBBB")
 
 # Create and place the input file selection
 tk.Label(root, text="Input Video File").grid(row=0, column=0, padx=10, pady=5)
@@ -278,6 +369,30 @@ start_button = tk.Button(root, text="Start Processing", command=start_processing
 start_button.grid(row=9, column=0, columnspan=3, padx=10, pady=20)
 
 
+tk.Label(root, text="Crop", font='Segoe-UI 14').grid(row=2, column=5, padx=10, pady=5)
+
+tk.Label(root, text="Horizontal Start").grid(row=3, column=5, padx=10, pady=5)
+crop_x_start_entry = tk.Entry(root)
+crop_x_start_entry.insert(-1, "0")
+crop_x_start_entry.grid(row=3, column=6, padx=10, pady=5)
+
+tk.Label(root, text="Horizontal End").grid(row=4, column=5, padx=10, pady=5)
+crop_x_end_entry = tk.Entry(root)
+crop_x_end_entry.insert(-1, "10000")
+crop_x_end_entry.grid(row=4, column=6, padx=10, pady=5)
+
+tk.Label(root, text="Vertical Start").grid(row=5, column=5, padx=10, pady=5)
+crop_y_start_entry = tk.Entry(root)
+crop_y_start_entry.insert(-1, "0")
+crop_y_start_entry.grid(row=5, column=6, padx=10, pady=5)
+
+tk.Label(root, text="Vertical End").grid(row=6, column=5, padx=10, pady=5)
+crop_y_end_entry = tk.Entry(root)
+crop_y_end_entry.insert(-1, "10000")
+crop_y_end_entry.grid(row=6, column=6, padx=10, pady=5)
+
+
+
 
 
 placeholder_img = cv2.imread(preview_placeholder_image_default_path)
@@ -292,7 +407,7 @@ video_preview_label = tk.Label(root, image=video_preview_image)
 video_preview_label.grid(row=10, column=2, padx=10, pady=5, rowspan=8, columnspan=8)
 video_preview_label.image = video_preview_image
 
-tk.Label(root, text="Preview").grid(row=12, column=0, padx=10, pady=5, columnspan=2)
+tk.Label(root, text="Preview", font='Segoe-UI 14').grid(row=12, column=0, padx=10, pady=5, columnspan=2)
 
 tk.Label(root, text="Frame Number : ").grid(row=13, column=0, padx=10, pady=5)
 previewframe_entry = tk.Entry(root)
