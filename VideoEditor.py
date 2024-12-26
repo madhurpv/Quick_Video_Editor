@@ -1,6 +1,7 @@
 import cv2
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from tkinter import ttk
 from tkinter.ttk import Progressbar
 import numpy as np
 from PIL import Image, ImageTk
@@ -9,7 +10,7 @@ from PIL import Image, ImageTk
 #TODO: Add all Errors to Message Box
 
 
-copyright_image_default_path = "C:\\Users\\Dell\\Desktop\\New folder (18)\\CopyrightSymbol.png"
+copyright_image_default_path = "C:\\Users\\Dell\\Desktop\\Python\\Video\\SImpleVideoEditor\\CopyrightSymbol.png"
 preview_placeholder_image_default_path = "Video_Frame_Placeholder.png"
 
 
@@ -33,6 +34,23 @@ def overlay_image_alpha(background, overlay, position=(0, 0)):
     
     return background
 
+def change_brightness(img, brightness):
+    brightness = np.clip(brightness, -100, 100)
+    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    h, s, v = cv2.split(hsv_img)
+    adjustment = brightness * 2.55  # 100 -> 255, -100 -> -255
+    v = cv2.add(v, adjustment)
+    v = np.clip(v, 0, 255)
+    hsv_img = cv2.merge([h, s, v])
+    img_bgr = cv2.cvtColor(hsv_img, cv2.COLOR_HSV2BGR)
+    return img_bgr
+
+def change_contrast(img, contrast_value):
+    factor = (259 * (contrast_value + 255)) / (255 * (259 - contrast_value))
+    adjusted_img = cv2.convertScaleAbs(img, alpha=factor, beta=0)
+    
+    return adjusted_img
+
 def process_frame(frame, new_width, new_height, copyright_checked, copyright_img, crop_x_start, crop_x_end, crop_y_start, crop_y_end):
     # Cropping
     height, width, channels = frame.shape
@@ -43,8 +61,9 @@ def process_frame(frame, new_width, new_height, copyright_checked, copyright_img
     #new_width = scale_new_width(height, width, new_height)
     #print(new_width, new_height, frame.shape)
     
-    # Resize frame
     frame_resized = cv2.resize(frame, (new_width, new_height))
+    frame_resized = change_brightness(frame_resized, int(brightness_slider.get()))
+    frame_resized = change_contrast(frame_resized, int(contrast_slider.get())*2)
     
     # Overlay the copyright image if checked
     #print(copyright_checked)
@@ -99,7 +118,7 @@ def process_video(input_video_path, output_video_path, x, y, output_height, copy
     new_width = scale_new_width(crop_y_end-crop_y_start, crop_x_end-crop_x_start, new_height)
     
     # Set up codec and output video writer
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for saving as .mp4
+    fourcc = cv2.VideoWriter_fourcc(*'h264')  # Codec for saving as .mp4
     out = cv2.VideoWriter(output_video_path, fourcc, fps, (new_width, new_height))
     #print("ORIGINAL - ", new_width, new_height)
     
@@ -308,6 +327,17 @@ def update_progress(current, total):
     progress_bar['value'] = progress_percentage
     root.update_idletasks()
 
+def contrast_update_value():
+    contrast_value_label.config(text=str(int(contrast_slider.get())))
+    if input_file_entry.get()!= "":
+        get_preview()
+
+def brightness_update_value():
+    brightness_value_label.config(text=str(int(brightness_slider.get())))
+    if input_file_entry.get()!= "":
+        get_preview()
+    
+
 # Create the GUI window
 root = tk.Tk()
 root.title("Video Editor")
@@ -340,6 +370,7 @@ copyright_image_button.grid(row=2, column=2, padx=10, pady=5)
 # Start and end time entries
 tk.Label(root, text="Start Time (seconds)").grid(row=3, column=0, padx=10, pady=5)
 start_time_entry = tk.Entry(root)
+start_time_entry.insert(-1, "0")
 start_time_entry.grid(row=3, column=1, padx=10, pady=5)
 
 tk.Label(root, text="End Time (seconds)").grid(row=4, column=0, padx=10, pady=5)
@@ -349,6 +380,7 @@ end_time_entry.grid(row=4, column=1, padx=10, pady=5)
 # Height entry
 tk.Label(root, text="Output Height (pixels)").grid(row=5, column=0, padx=10, pady=5)
 height_entry = tk.Entry(root)
+height_entry.insert(-1, "500")
 height_entry.grid(row=5, column=1, padx=10, pady=5)
 
 # Copyright checkbox
@@ -369,28 +401,51 @@ start_button = tk.Button(root, text="Start Processing", command=start_processing
 start_button.grid(row=9, column=0, columnspan=3, padx=10, pady=20)
 
 
-tk.Label(root, text="Crop", font='Segoe-UI 14').grid(row=2, column=5, padx=10, pady=5)
+tk.Label(root, text="Crop", font='Segoe-UI 14').grid(row=0, column=5, padx=10, pady=5)
 
-tk.Label(root, text="Horizontal Start").grid(row=3, column=5, padx=10, pady=5)
+tk.Label(root, text="Horizontal Start").grid(row=1, column=5, padx=10, pady=5)
 crop_x_start_entry = tk.Entry(root)
 crop_x_start_entry.insert(-1, "0")
-crop_x_start_entry.grid(row=3, column=6, padx=10, pady=5)
+crop_x_start_entry.grid(row=1, column=6, padx=10, pady=5)
 
-tk.Label(root, text="Horizontal End").grid(row=4, column=5, padx=10, pady=5)
+tk.Label(root, text="Horizontal End").grid(row=2, column=5, padx=10, pady=5)
 crop_x_end_entry = tk.Entry(root)
 crop_x_end_entry.insert(-1, "10000")
-crop_x_end_entry.grid(row=4, column=6, padx=10, pady=5)
+crop_x_end_entry.grid(row=2, column=6, padx=10, pady=5)
 
-tk.Label(root, text="Vertical Start").grid(row=5, column=5, padx=10, pady=5)
+tk.Label(root, text="Vertical Start").grid(row=3, column=5, padx=10, pady=5)
 crop_y_start_entry = tk.Entry(root)
 crop_y_start_entry.insert(-1, "0")
-crop_y_start_entry.grid(row=5, column=6, padx=10, pady=5)
+crop_y_start_entry.grid(row=3, column=6, padx=10, pady=5)
 
-tk.Label(root, text="Vertical End").grid(row=6, column=5, padx=10, pady=5)
+tk.Label(root, text="Vertical End").grid(row=4, column=5, padx=10, pady=5)
 crop_y_end_entry = tk.Entry(root)
 crop_y_end_entry.insert(-1, "10000")
-crop_y_end_entry.grid(row=6, column=6, padx=10, pady=5)
+crop_y_end_entry.grid(row=4, column=6, padx=10, pady=5)
 
+
+
+tk.Label(root, text="Colour", font='Segoe-UI 14').grid(row=6, column=5, padx=10, pady=5)
+
+style = ttk.Style()
+style.configure("TScale", background="#303030", troughcolor="#D3D3D3", sliderlength=25, thickness=20)
+
+tk.Label(root, text="Brightness").grid(row=7, column=5, padx=10, pady=5)
+brightness_slider = ttk.Scale(root, from_=-100, to=100, orient="horizontal", length=200)
+brightness_slider.set(0)
+brightness_slider.grid(row=7, column=7, padx=10, pady=5)
+brightness_value_label = tk.Label(root, text="0")
+brightness_value_label.grid(row=7, column=6, padx=10, pady=5)
+brightness_slider.bind("<Motion>", lambda event: brightness_update_value())
+
+
+tk.Label(root, text="Contrast").grid(row=8, column=5, padx=10, pady=5)
+contrast_slider = ttk.Scale(root, from_=-100, to=100, orient="horizontal", length=200)
+contrast_slider.set(0)
+contrast_slider.grid(row=8, column=7, padx=10, pady=5)
+contrast_value_label = tk.Label(root, text="0")
+contrast_value_label.grid(row=8, column=6, padx=10, pady=5)
+contrast_slider.bind("<Motion>", lambda event: contrast_update_value())
 
 
 
@@ -411,6 +466,7 @@ tk.Label(root, text="Preview", font='Segoe-UI 14').grid(row=12, column=0, padx=1
 
 tk.Label(root, text="Frame Number : ").grid(row=13, column=0, padx=10, pady=5)
 previewframe_entry = tk.Entry(root)
+previewframe_entry.insert(-1, "1")
 previewframe_entry.grid(row=13, column=1, padx=10, pady=5)
 
 preview_button = tk.Button(root, text="Preview", command=get_preview)
